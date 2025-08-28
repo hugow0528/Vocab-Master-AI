@@ -1,0 +1,5 @@
+{
+  "name": "Git publish of Vocab Master AI",
+  "description": "An AI-powered vocabulary learning app to master new words with interactive quizzes and context-based sentence generation using the Gemini API. Study with flashcards, test your knowledge, and see words in action with AI-generated stories.",
+  "requestFramePermissions": []
+}

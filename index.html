@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vocab Master AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.1.1/client",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.16.0"
+  }
+}
+</script>
+  <style>
+    /* Styles for the flip card animation */
+    .flip-card {
+      perspective: 1000px;
+      background-color: transparent;
+    }
+    .flip-card-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.7s;
+      transform-style: preserve-3d;
+    }
+    .flip-card.flipped .flip-card-inner {
+      transform: rotateY(180deg);
+    }
+    .flip-card-front, .flip-card-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      -webkit-backface-visibility: hidden; /* Safari */
+      backface-visibility: hidden;
+    }
+    .flip-card-back {
+      transform: rotateY(180deg);
+    }
+    /* Simple fade-in animation */
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-in-out;
+    }
+  </style>
+</head>
+  <body class="bg-slate-900 text-slate-100">
+    <div id="root"></div>
+    <script type="module">
+// --- Start of inlined code ---
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom/client';
+import { GoogleGenAI, Type } from "@google/genai";
+
+// === START: types.ts ===
+var QuizMode;
+(function (QuizMode) {
+    QuizMode["WordToMeaning"] = "WordToMeaning";
+    QuizMode["MeaningToWord"] = "MeaningToWord";
+    QuizMode["FillInTheBlank"] = "FillInTheBlank";
+})(QuizMode || (QuizMode = {}));
+var GameStatus;
+(function (GameStatus) {
+    GameStatus[GameStatus["Playing"] = 0] = "Playing";
+    GameStatus[GameStatus["Won"] = 1] = "Won";
+})(GameStatus || (GameStatus = {}));
+// === END: types.ts ===
+
+// === START: constants.ts ===
+const vocabularyData = [
+  { word: 'Ignite', partOfSpeech: 'Verb', chineseMeaning: '點燃', synonym: 'light, kindle, set ablaze', sampleSentence: 'The spark ignited a flame.', remark: '' },
+  { word: 'inquisitiveness', partOfSpeech: 'Noun', chineseMeaning: '好奇心', synonym: 'curiosity, probing, questioning', sampleSentence: 'Her inquisitiveness led her to explore new subjects.', remark: '' },
+  { word: 'evade', partOfSpeech: 'Verb', chineseMeaning: '躲避', synonym: 'avoid, shirk, dodge', sampleSentence: 'He tried to evade the difficult question.', remark: '' },
+  { word: 'tragedy', partOfSpeech: 'Noun', chineseMeaning: '悲劇', synonym: 'catastrophe, disaster, misfortune', sampleSentence: 'The loss of their home was a great tragedy.', remark: '' },
+  { word: 'deafening', partOfSpeech: 'Adjective', chineseMeaning: '震耳欲聾的', synonym: 'ear-splitting, thunderous, booming', sampleSentence: 'The concert was so loud it was deafening.', remark: "Usually used with 'noise' or 'sound'." },
+  { word: 'mischievous', partOfSpeech: 'Adjective', chineseMeaning: '淘氣的', synonym: 'naughty', sampleSentence: "The mischievous child hid his sister's toys.", remark: '' },
+  { word: 'nuisance', partOfSpeech: 'Noun', chineseMeaning: '滋擾', synonym: 'annoyance, bother, pest', sampleSentence: 'The constant barking of the dog was a nuisance.', remark: '' },
+  { word: 'irreparable', partOfSpeech: 'Adjective', chineseMeaning: '不可挽回的', synonym: 'irrevocable, irretrievable, irredeemable', sampleSentence: 'The damage to the ancient artifact was irreparable.', remark: '' },
+  { word: 'foremost', partOfSpeech: 'Adjective', chineseMeaning: '最重要的', synonym: 'primary, paramount, leading', sampleSentence: 'The foremost reason for his success was hard work.', remark: 'Often used in the phrase "the first and foremost reasons".' },
+  { word: 'vulnerable', partOfSpeech: 'Adjective', chineseMeaning: '易受傷害的', synonym: 'susceptible, defenseless, exposed', sampleSentence: 'Children are often vulnerable to peer pressure.', remark: 'Can imply being fragile or easily hurt.' },
+  { word: 'catastrophes', partOfSpeech: 'Noun', chineseMeaning: '災難', synonym: 'disasters, calamities, cataclysms', sampleSentence: 'Natural catastrophes can cause widespread damage.', remark: '' },
+  { word: 'extend a warm welcome', partOfSpeech: 'Verb Phrase', chineseMeaning: '熱烈歡迎', synonym: 'greet, receive, embrace', sampleSentence: 'I extend a warm welcome to all of you to the conference.', remark: 'A formal way to greet guests.' },
+  { word: 'vastly', partOfSpeech: 'Adverb', chineseMeaning: '非常', synonym: 'very', sampleSentence: 'The new system is vastly more efficient.', remark: 'Used to emphasize a large difference or extent.' },
+  { word: 'mutually beneficial', partOfSpeech: 'Adjective', chineseMeaning: '互利互惠的', synonym: 'reciprocal, win-win, advantageous', sampleSentence: 'The partnership was mutually beneficial for both companies.', remark: '' },
+  { word: 'adequate', partOfSpeech: 'Adjective', chineseMeaning: '足夠的', synonym: 'sufficient, enough, satisfactory', sampleSentence: 'Do we have adequate supplies for the trip?', remark: '' },
+  { word: 'soothed my soul', partOfSpeech: 'Verb Phrase', chineseMeaning: '撫慰我的心靈', synonym: 'calmed my spirit, comforted me', sampleSentence: 'Listening to classical music always soothed my soul.', remark: '' },
+  { word: 'shivering', partOfSpeech: 'Adjective', chineseMeaning: '發抖的', synonym: 'trembling, quivering, shaking', sampleSentence: 'She stood shivering in the cold.', remark: 'Can also be used as a verb: "He was shivering."' },
+  { word: 'reluctant', partOfSpeech: 'Adjective', chineseMeaning: '不情願的', synonym: 'unwilling, hesitant, disinclined', sampleSentence: 'He was reluctant to admit his mistake.', remark: '' },
+  { word: 'Misery', partOfSpeech: 'Noun', chineseMeaning: '苦難', synonym: 'suffering, distress, agony', sampleSentence: 'The war brought untold misery to the people.', remark: '' },
+  { word: 'innocence', partOfSpeech: 'Noun', chineseMeaning: '清白', synonym: 'purity, blamelessness, naivety', sampleSentence: 'He maintained his innocence despite the accusations.', remark: 'Can also refer to a lack of experience or worldly knowledge.' },
+  { word: 'despise', partOfSpeech: 'Verb', chineseMeaning: '鄙視', synonym: 'scorn, loathe, disdain', sampleSentence: 'She despised people who were cruel to animals.', remark: '' },
+  { word: 'curb', partOfSpeech: 'Verb', chineseMeaning: '抑制', synonym: 'restrain, control, limit', sampleSentence: 'Governments are trying to curb inflation.', remark: '' },
+  { word: 'barbarian', partOfSpeech: 'Noun/Adjective', chineseMeaning: '野蠻人/野蠻的', synonym: 'brutal, savage, cruel', sampleSentence: 'Their actions were described as utterly barbarian.', remark: 'Can be used to describe uncivilized behavior.' },
+  { word: 'should not be taken lightly', partOfSpeech: 'Phrase', chineseMeaning: '應被認真考慮', synonym: 'should be considered carefully', sampleSentence: 'The issue of climate change should not be taken lightly.', remark: 'Emphasizes the importance of something.' },
+  { word: 'on the brink of', partOfSpeech: 'Phrase', chineseMeaning: '瀕臨', synonym: 'on the edge to, on the verge of, near, close to', sampleSentence: 'The country was on the brink of war.', remark: 'Implies being very close to a significant event, often negative.' },
+  { word: 'contaminates the minds of people', partOfSpeech: 'Phrase', chineseMeaning: '污染思想', synonym: 'corrupts thoughts, taints minds', sampleSentence: 'Misinformation can contaminate the minds of people.', remark: '' },
+  { word: 'jeopardizes', partOfSpeech: 'Verb', chineseMeaning: '危害', synonym: 'threatens, endangers, imperils', sampleSentence: 'Smoking jeopardizes your health.', remark: '' },
+  { word: 'breeding ground for crime', partOfSpeech: 'Noun Phrase', chineseMeaning: '犯罪溫床', synonym: 'a hatched of crime', sampleSentence: 'Poverty can often become a breeding ground for crime.', remark: '' },
+  { word: 'go astray', partOfSpeech: 'Verb Phrase', chineseMeaning: '誤入歧途', synonym: 'err, wander off, deviate', sampleSentence: 'Without guidance, young people might go astray.', remark: '' },
+  { word: 'get into bad company', partOfSpeech: 'Verb Phrase', chineseMeaning: '交壞朋友', synonym: 'associate with undesirable people', sampleSentence: 'Parents worry when their children get into bad company.', remark: '' },
+  { word: 'On the whole', partOfSpeech: 'Phrase', chineseMeaning: '整體而言', synonym: 'On balance, In essence', sampleSentence: 'On the whole, the project was a success.', remark: 'Used to summarize or give an overall impression.' },
+  { word: "for xx's sake", partOfSpeech: 'Phrase', chineseMeaning: '為 xxx', synonym: 'for the benefit of, on behalf of', sampleSentence: "For goodness' sake, please be quiet!", remark: "\"For Hong Kong's sake\" (為香港). Implies for the benefit or good of someone/something." },
+  { word: 'culinary skills', partOfSpeech: 'Noun Phrase', chineseMeaning: '烹飪技巧', synonym: 'cooking expertise, gastronomic ability', sampleSentence: 'She enrolled in a course to improve her culinary skills.', remark: 'Refers to cooking abilities.' },
+  { word: 'blown me away', partOfSpeech: 'Verb Phrase', chineseMeaning: '讓我印象深刻', synonym: 'impressed me', sampleSentence: 'The performance just completely blew me away.', remark: 'An idiom meaning to greatly impress or surprise someone.' },
+  { word: 'lofty', partOfSpeech: 'Adjective', chineseMeaning: '崇高的', synonym: 'noble, high ambitions', sampleSentence: 'He has lofty goals for his career.', remark: 'Can refer to high ideals or ambitions.' },
+  { word: 'whereby', partOfSpeech: 'Conjunction', chineseMeaning: '憑藉；藉以', synonym: 'by which, under which', sampleSentence: 'They established a system whereby all members could vote.', remark: 'Introduces a clause explaining how something is achieved.' },
+  { word: 'myriads of', partOfSpeech: 'Phrase', chineseMeaning: '許多', synonym: 'lots of', sampleSentence: 'There are myriads of stars in the night sky.', remark: 'Implies a very large, indefinite number.' },
+  { word: 'give thought to', partOfSpeech: 'Verb Phrase', chineseMeaning: '考慮', synonym: 'consider', sampleSentence: 'You should give some thought to your future plans.', remark: '' },
+  { word: 'ranging from xx to xx', partOfSpeech: 'Phrase', chineseMeaning: '從 xx 到 xx', synonym: 'varying from, extending from', sampleSentence: 'The products range from cheap to expensive.', remark: 'Used to indicate a variety or spectrum.' },
+  { word: 'economic mainstay', partOfSpeech: 'Noun Phrase', chineseMeaning: '經濟支柱', synonym: 'economic pillar, the sole breadwinner', sampleSentence: 'Tourism is an economic mainstay of the island.', remark: 'Refers to the main source of economic support.' },
+  { word: 'noted for', partOfSpeech: 'Phrase', chineseMeaning: '因 xxx 而聞名', synonym: 'renowned for, famous for, celebrated for', sampleSentence: 'The city is noted for its beautiful architecture.', remark: '' },
+  { word: 'palatable', partOfSpeech: 'Adjective', chineseMeaning: '美味的', synonym: 'tasty, appetizing, savory', sampleSentence: 'The meal was surprisingly palatable.', remark: 'Can also refer to ideas or suggestions that are acceptable or agreeable.' },
+  { word: 'Spiritual welfare', partOfSpeech: 'Noun Phrase', chineseMeaning: '精神福祉', synonym: 'mental well-being, emotional health', sampleSentence: "The church is concerned with the spiritual welfare of its members.", remark: "Refers to a person's mental and emotional well-being." },
+  { word: 'transcends', partOfSpeech: 'Verb', chineseMeaning: '超越', synonym: 'surpasses, exceeds, goes beyond', sampleSentence: 'Her beauty transcends mere physical appearance.', remark: '' },
+  { word: 'enticing', partOfSpeech: 'Adjective', chineseMeaning: '吸引人的', synonym: 'seductive, appealing', sampleSentence: 'The enticing aroma of freshly baked bread filled the kitchen.', remark: '' },
+  { word: 'born and bred', partOfSpeech: 'Phrase', chineseMeaning: '土生土長的', synonym: '', sampleSentence: 'I love HK because I was born and bred here.', remark: 'Refers to someone who was born and raised in a particular place.' },
+  { word: 'acquaints', partOfSpeech: 'Verb', chineseMeaning: '使熟悉', synonym: 'familiarizes', sampleSentence: 'The orientation program acquaints new employees with company policies.', remark: '' },
+  { word: 'rare sight', partOfSpeech: 'Noun Phrase', chineseMeaning: '罕見現象', synonym: 'uncommon spectacle, unusual occurrence', sampleSentence: 'Snow in the desert is a rare sight.', remark: '' },
+  { word: 'To echo with', partOfSpeech: 'Phrase', chineseMeaning: '呼應', synonym: 'resonate with, align with, correspond to', sampleSentence: "His speech seemed to echo with the public's concerns.", remark: 'To reflect or be in agreement with.' },
+  { word: 'take over', partOfSpeech: 'Verb Phrase', chineseMeaning: '支配/接管', synonym: 'assume control, seize, conquer', sampleSentence: 'The new manager will take over the department next month.', remark: '' },
+  { word: 'prerequisite', partOfSpeech: 'Noun', chineseMeaning: '先決條件', synonym: 'requirement, precondition, essential', sampleSentence: 'A good education is a prerequisite for this job.', remark: 'Something required before something else can happen.' },
+  { word: 'handicapped', partOfSpeech: 'Adjective', chineseMeaning: '殘疾的', synonym: 'disabled, impaired, challenged', sampleSentence: 'The building has ramps for handicapped access.', remark: 'While still used, "disabled" is often preferred.' },
+  { word: 'paralyzed', partOfSpeech: 'Adjective', chineseMeaning: '癱瘓的', synonym: 'immobilized, disabled, incapacitated', sampleSentence: 'He was paralyzed from the waist down after the accident.', remark: '' },
+  { word: 'bail', partOfSpeech: 'Verb', chineseMeaning: '幫助', synonym: 'help', sampleSentence: 'Can you bail me out of this difficult situation?', remark: 'Often used in the context of helping someone out of trouble or a difficult financial situation.' },
+  { word: 'Had it not been for the contribution made by xxx', partOfSpeech: 'Phrase', chineseMeaning: '如果沒有 xxx 的貢獻', synonym: 'Without the contribution of xxx', sampleSentence: 'Had it not been for the contribution made by the volunteers, the event would not have been possible.', remark: 'A conditional phrase used to express a past condition that affected an outcome.' },
+  { word: 'take the initiative', partOfSpeech: 'Verb Phrase', chineseMeaning: '採取主動', synonym: 'first step', sampleSentence: 'She decided to take the initiative and organize the meeting.', remark: '' },
+  { word: 'collective efforts', partOfSpeech: 'Noun Phrase', chineseMeaning: '齊心協力', synonym: 'concerted endeavours', sampleSentence: 'The project was a success thanks to collective efforts.', remark: 'Refers to actions taken together by a group.' },
+  { word: 'pay tribute to', partOfSpeech: 'Verb Phrase', chineseMeaning: '致敬', synonym: 'pay homage', sampleSentence: 'We paid tribute to the fallen soldiers.', remark: '' },
+  { word: "Let's join hands to step up holistic education, before it is too late", partOfSpeech: 'Phrase', chineseMeaning: '攜手改革 xxx, 以免太遲', synonym: "Let's collaborate on, Let's work together to promote", sampleSentence: "Let's join hands to step up holistic education, before it is too late.", remark: 'A call to action for collective effort.' },
+  { word: 'tremendous', partOfSpeech: 'Adjective', chineseMeaning: '巨大', synonym: 'enormous, colossal, immense', sampleSentence: 'He put a tremendous amount of effort into the project.', remark: 'Implies something very large or great.' },
+  { word: 'Does xxx ring a bell?', partOfSpeech: 'Phrase', chineseMeaning: '係唔係好熟', synonym: '', sampleSentence: 'Does the name John Smith ring a bell?', remark: 'An idiom meaning "Does this sound familiar?" or "Do you recognize this?".' },
+  { word: 'work their fingers to the bone', partOfSpeech: 'Phrase', chineseMeaning: '辛勞工作', synonym: '', sampleSentence: 'They worked their fingers to the bone to build their business.', remark: 'An idiom meaning to work extremely hard.' },
+  { word: 'run-up to DSE', partOfSpeech: 'Noun Phrase', chineseMeaning: '臨近 DSE', synonym: '', sampleSentence: 'The students were studying hard in the run-up to the DSE exams.', remark: 'Refers to the period immediately before an important event.' },
+  { word: 'distraught', partOfSpeech: 'Adjective', chineseMeaning: '煩惱的', synonym: 'worry', sampleSentence: 'She was distraught after losing her pet.', remark: 'Implies being extremely upset or agitated.' }
+];
+// === END: constants.ts ===
+
+// === START: services/soundService.ts ===
+const soundData = {
+  click: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
+  correct: 'data:audio/wav;base64,UklGRkIAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhQgAAAP8/gP3/DP4A/vj+Af8J/jX+Q/6q/t//FQCqAN8A5ADyAP8A/wD/APMA8gDsAOQA2gC8AJQAhgB1AP8A9QD/APQA8gDsAOMA2QDAAJgAfgDXAPUA9gD/APgA/AD5APIA7wDeAM4ArwCIAGwAQQAmABcAGgAbABwAHQAfACEAIgAiACEAIAAdABsAGgAXABQAEgAQAA0ACAACAAAAAP//',
+  incorrect: 'data:audio/wav;base64,UklGRlIAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhSAAAAEB/r/+3/7j/tv+w/6v/qf+f/5j/k/+O/4v/iP9//3f/c/9v/2j/ZP9j/2H/Wv9U/07/S/9I/0X/Qv8+/zr/Nv8w/y3/Kf8i/x7/Gv8W/xT/Ev8Q/w3/Cv8H/wT/Av8A/wD/AP8B/wL/A/8F/wf/Cv8O/xL/Ff8Z/x0/IP8m/yv/L/8z/zn/P/9E/0n/Tf9U/1f/Wf9b/1//Yf9i/2P/ZP9l/2b/aP9p/2r/bA==',
+  win: 'data:audio/wav;base64,UklGRqgAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhqAAAAAAA/v8CAP3/BwD+/wMA/P4CAP7/AgD//wIAAAD9/wEA//8CAP7/AgD8/wIA/v8BAP//AgD9/wMA/v8EAP/+BAD+/wUA//4EAPz/BgD9/wcA/f8IAP3/CgD8/wsA/P8MAP3/DgD//w4A/P8PAP/+EAD8/xEA//8RAP7/EQD//xIA/v8UAP/+FAD//xYA/v8YAP//GQD//xoA//8bAP//HAD+/x0A//8eAP//HwD//x8A//8gAP//IQD//yIA//8jAP//JAD//yUA//8mAP//JwD//ygA//8pAP//KgD//ysA//8sAP//LQD//i4A//8vAP//MAD//zEA//8yAP//MwD//zQA//81AP//NgD//zcAAAAA',
+};
+let isGloballyMuted = false;
+let audioContextInitialized = false;
+try {
+    const storedMuteState = localStorage.getItem('vocabMasterAI.isMuted');
+    if (storedMuteState) {
+        isGloballyMuted = JSON.parse(storedMuteState);
+    }
+} catch (e) {
+    console.error("Could not parse mute state from localStorage", e);
+}
+const initAudioContext = () => {
+    if (audioContextInitialized) return;
+    try {
+        const unlockAudio = new Audio(soundData.click);
+        unlockAudio.volume = 0;
+        const playPromise = unlockAudio.play();
+        
+        if (playPromise !== undefined) {
+            playPromise.then(_ => {
+                unlockAudio.pause();
+                audioContextInitialized = true;
+                console.log("Audio context unlocked successfully.");
+            }).catch(error => {
+                console.warn("Audio context unlock failed.", error);
+            });
+        }
+    } catch (e) {
+        console.error("Error initializing audio context", e);
+    }
+};
+const playSound = (sound) => {
+  if (!isGloballyMuted) {
+    const audio = new Audio(soundData[sound]);
+    audio.play().catch(error => {
+        if (error.name !== 'AbortError') {
+            console.error(`Error playing sound: ${sound}`, error);
+        }
+    });
+  }
+};
+const toggleMute = () => {
+    isGloballyMuted = !isGloballyMuted;
+    try {
+        localStorage.setItem('vocabMasterAI.isMuted', JSON.stringify(isGloballyMuted));
+    } catch (e) {
+        console.error("Could not save mute state to localStorage", e);
+    }
+};
+const isMuted = () => {
+    return isGloballyMuted;
+};
+// === END: services/soundService.ts ===
+
+// === START: services/geminiService.ts ===
+const geminiService = {
+  ai: null,
+  isInitialized: false,
+
+  initialize(apiKey) {
+    if (apiKey && apiKey.trim() !== '') {
+      try {
+        this.ai = new GoogleGenAI({ apiKey });
+        this.isInitialized = true;
+        console.log("Gemini Service Initialized.");
+      } catch (e) {
+        this.ai = null;
+        this.isInitialized = false;
+        console.error("Failed to initialize Gemini Service:", e);
+      }
+    } else {
+      this.ai = null;
+      this.isInitialized = false;
+    }
+  },
+
+  async generateNewSentence(word) {
+    if (!this.isInitialized) return "AI features are disabled. Please configure your Gemini API Key.";
+    const prompt = `Create a new, clear, and concise sample sentence for the English word "${word.word}".
+    The word means "${word.chineseMeaning}" in Chinese.
+    The part of speech is "${word.partOfSpeech}".
+    Do not repeat the original sample sentence: "${word.sampleSentence}".
+    The new sentence should be easy for an English learner to understand and demonstrate the word's meaning effectively.
+    Only return the new sentence.`;
+
+    try {
+        const response = await this.ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.7,
+                maxOutputTokens: 100,
+                thinkingConfig: { thinkingBudget: 50 },
+            }
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error generating new sentence:", error);
+        return "Sorry, I couldn't generate a sentence. Please check your API key and network connection.";
+    }
+  },
+
+  async generateStory(words) {
+    if (!this.isInitialized) return "AI features are disabled. Please configure your Gemini API Key.";
+    const wordList = words.map(w => w.word).join(', ');
+    const prompt = `Write a short, engaging story (around 100-150 words) that correctly uses the following vocabulary words: ${wordList}.
+    Please make the story coherent and easy for an English learner to follow. The story should be interesting and creative.
+    After the story, do not add any extra text or explanations.`;
+
+    try {
+        const response = await this.ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.8,
+            }
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error generating story:", error);
+        return "Sorry, I couldn't generate a story. Please check your API key and network connection.";
+    }
+  },
+
+  async generateNewWords(existingWords, count = 10) {
+    if (!this.isInitialized) return [];
+    const prompt = `Generate ${count} new English vocabulary words suitable for an intermediate learner.
+    These words should not be in the following list: ${existingWords.join(', ')}.
+    For each word, provide:
+    1. "word" (the vocabulary word itself)
+    2. "partOfSpeech" (e.g., Noun, Verb, Adjective)
+    3. "chineseMeaning" (the translation in Traditional Chinese)
+    4. "synonym" (a few synonyms separated by commas)
+    5. "sampleSentence" (a clear, easy-to-understand sentence using the word)
+    6. "remark" (a brief note on usage, if any, otherwise an empty string)
+    
+    Return the result as a JSON array of objects.`;
+
+    try {
+        const response = await this.ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                temperature: 0.9,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            word: { type: Type.STRING },
+                            partOfSpeech: { type: Type.STRING },
+                            chineseMeaning: { type: Type.STRING },
+                            synonym: { type: Type.STRING },
+                            sampleSentence: { type: Type.STRING },
+                            remark: { type: Type.STRING },
+                        },
+                        required: ["word", "partOfSpeech", "chineseMeaning", "synonym", "sampleSentence", "remark"]
+                    }
+                }
+            }
+        });
+        
+        const jsonString = response.text.trim();
+        const newWords = JSON.parse(jsonString);
+
+        if (!Array.isArray(newWords)) {
+            console.error("Gemini API did not return an array for new words.", newWords);
+            return [];
+        }
+
+        return newWords.map(w => ({...w, isStarred: false}));
+        
+    } catch (error) {
+        console.error("Error generating new words:", error);
+        return [];
+    }
+  }
+};
+// === END: services/geminiService.ts ===
+
+// === START: components/icons.tsx ===
+const BrainCircuitIcon = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        React.createElement('path', { d: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }),
+        React.createElement('path', { d: "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" }),
+        React.createElement('path', { d: "m12 6 1 2 2 1-2 1-1 2-1-2-2-1 2-1z", fill: "currentColor", className: "text-sky-400", stroke: "none" })
+    )
+);
+const SparklesIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "m12 3-1.9 5.8-5.8 1.9 5.8 1.9 1.9 5.8 1.9-5.8 5.8-1.9-5.8-1.9z" })
+  )
+);
+const BackArrowIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "M19 12H5" }),
+    React.createElement('path', { d: "m12 19-7-7 7-7" })
+  )
+);
+const StarIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('polygon', { points: "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" })
+  )
+);
+const SwordsIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "m14.5 17.5 5-5" }),
+    React.createElement('path', { d: "M21 12c-2.5 0-5-2.5-5-5" }),
+    React.createElement('path', { d: "m9.5 6.5-5 5" }),
+    React.createElement('path', { d: "M3 12c2.5 0 5 2.5 5 5" }),
+    React.createElement('path', { d: "M3 3l18 18" })
+  )
+);
+const BookMarkedIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" }),
+    React.createElement('path', { d: "M16 12H8" })
+  )
+);
+const RefreshCwIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }),
+    React.createElement('path', { d: "M21 3v5h-5" }),
+    React.createElement('path', { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }),
+    React.createElement('path', { d: "M3 21v-5h5" })
+  )
+);
+const Volume2Icon = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+      React.createElement('polygon', { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }),
+      React.createElement('path', { d: "M15.54 8.46a5 5 0 0 1 0 7.07" }),
+      React.createElement('path', { d: "M19.07 4.93a10 10 0 0 1 0 14.14" })
+    )
+);
+const VolumeXIcon = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+      React.createElement('polygon', { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }),
+      React.createElement('line', { x1: "22", y1: "9", x2: "16", y2: "15" }),
+      React.createElement('line', { x1: "16", y1: "9", x2: "22", y2: "15" })
+    )
+);
+const BookOpenIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }),
+    React.createElement('path', { d: "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" })
+  )
+);
+const PencilIcon = (props) => (
+  React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+    React.createElement('path', { d: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" }),
+    React.createElement('path', { d: "m15 5 4 4" })
+  )
+);
+const CheckCircle2 = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        React.createElement('path', { d: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" }),
+        React.createElement('path', { d: "m9 12 2 2 4-4" })
+    )
+);
+const XCircle = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        React.createElement('circle', { cx: "12", cy: "12", r: "10" }),
+        React.createElement('path', { d: "m15 9-6 6" }),
+        React.createElement('path', { d: "m9 9 6 6" })
+    )
+);
+const RotateCw = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        React.createElement('path', { d: "M21 2v6h-6" }),
+        React.createElement('path', { d: "M3 12a9 9 0 0 1 15-6.7L21 8" }),
+        React.createElement('path', { d: "M3 22v-6h6" }),
+        React.createElement('path', { d: "M21 12a9 9 0 0 1-15 6.7L3 16" })
+    )
+);
+const Home = (props) => (
+    React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        React.createElement('path', { d: "m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }),
+        React.createElement('polyline', { points: "9 22 9 12 15 12 15 22" })
+    )
+);
+// === END: components/icons.tsx ===
+
+// === START: components/LoadingSpinner.tsx ===
+const LoadingSpinner = () => {
+  return (
+    React.createElement('svg', { 
+      className: "animate-spin -ml-1 mr-3 h-5 w-5 text-white", 
+      xmlns: "http://www.w3.org/2000/svg", 
+      fill: "none", 
+      viewBox: "0 0 24 24"
+    },
+      React.createElement('circle', { 
+        className: "opacity-25", 
+        cx: "12", 
+        cy: "12", 
+        r: "10", 
+        stroke: "currentColor", 
+        strokeWidth: "4"
+      }),
+      React.createElement('path', { 
+        className: "opacity-75", 
+        fill: "currentColor", 
+        d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      })
+    )
+  );
+};
+// === END: components/LoadingSpinner.tsx ===
+
+// === START: components/ApiKeyManager.tsx ===
+const ApiKeyManager = ({ apiKey, setApiKey }) => {
+  const [keyInput, setKeyInput] = useState('');
+  const [showInput, setShowInput] = useState(!apiKey);
+
+  const handleSave = () => {
+    setApiKey(keyInput);
+    setShowInput(false);
+  };
+  
+  const handleShowInput = () => {
+      setKeyInput(apiKey); // prefill with existing key
+      setShowInput(true);
+  }
+
+  if (!showInput) {
+    return (
+      React.createElement('div', { className: "text-right mb-4 -mt-4 text-xs" },
+        React.createElement('span', { className: "text-emerald-400 mr-2" }, "AI Enabled"),
+        React.createElement('button', {
+          onClick: handleShowInput,
+          className: "text-slate-500 hover:text-sky-400 font-medium underline"
+        }, "Update API Key")
+      )
+    );
+  }
+
+  return (
+    React.createElement('div', { className: "bg-sky-900/50 border border-sky-700 p-4 rounded-lg mb-8" },
+      React.createElement('h3', { className: "font-bold text-lg text-sky-300" }, "Setup Gemini AI"),
+      React.createElement('p', { className: "text-slate-400 text-sm mb-4" }, "To enable AI features, please enter your Google Gemini API key. Your key is stored only in your browser's local storage and is never sent to our servers."),
+      React.createElement('div', { className: "flex flex-col sm:flex-row justify-center items-center gap-2" },
+        React.createElement('input', {
+          type: "password",
+          value: keyInput,
+          onChange: e => setKeyInput(e.target.value),
+          placeholder: "Enter your Gemini API Key",
+          className: "w-full flex-grow bg-slate-900 border border-slate-600 rounded-md px-3 py-2 text-white focus:ring-sky-500 focus:border-sky-500"
+        }),
+        apiKey && React.createElement('button', { onClick: () => setShowInput(false), className: "px-4 py-2 rounded-md hover:bg-slate-700 transition-colors text-sm w-full sm:w-auto" }, "Cancel"),
+        React.createElement('button', {
+          onClick: handleSave,
+          className: "bg-sky-500 text-white px-4 py-2 rounded-md hover:bg-sky-600 transition-colors w-full sm:w-auto"
+        }, "Save Key")
+      )
+    )
+  );
+};
+// === END: components/ApiKeyManager.tsx ===
+
+// === START: components/Header.tsx ===
+const Header = ({ onShowList, onStartQuiz, onStartMatchingGame }) => {
+  return (
+    React.createElement('header', { className: "bg-slate-900/70 backdrop-blur-lg sticky top-0 z-10 border-b border-slate-700" },
+      React.createElement('div', { className: "container mx-auto px-4 md:px-8 py-4 flex justify-between items-center" },
+        React.createElement('div', { 
+          className: "flex items-center gap-3 cursor-pointer",
+          onClick: onShowList
+        },
+          React.createElement(BrainCircuitIcon, { className: "h-8 w-8 text-sky-400" }),
+          React.createElement('h1', { className: "text-2xl font-bold tracking-tight text-white" },
+            "Vocab Master ", React.createElement('span', { className: "text-sky-400" }, "AI")
+          )
+        ),
+        React.createElement('nav', { className: "flex items-center gap-2" },
+          React.createElement('button', { 
+            onClick: onShowList,
+            className: "px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
+          }, "Word List"),
+          React.createElement('button', {
+            onClick: onStartMatchingGame,
+            className: "px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 flex items-center gap-2"
+          }, 
+            React.createElement(SwordsIcon, { className: "h-4 w-4" }),
+            "Matching Game"
+          ),
+          React.createElement('button', { 
+            onClick: onStartQuiz,
+            className: "px-4 py-2 text-sm font-medium bg-sky-500 text-white rounded-md hover:bg-sky-600 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+          }, "Take Quiz")
+        )
+      )
+    )
+  );
+};
+// === END: components/Header.tsx ===
+
+// === START: components/StoryView.tsx ===
+const StoryView = ({ words, onBack }) => {
+  const [story, setStory] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  useEffect(() => {
+    const fetchStory = async () => {
+      if (words.length < 2) {
+        setError("Please select at least 2 words to create a story.");
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError('');
+      try {
+        const generatedStory = await geminiService.generateStory(words);
+        setStory(generatedStory);
+      } catch (err) {
+        setError('Failed to generate a story. Please try again.');
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStory();
+  }, [words]);
+
+  const highlightWords = (text) => {
+    const wordRegex = new RegExp(`\\b(${words.map(w => w.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
+    return text.split(wordRegex).map((part, index) =>
+      words.some(w => w.word.toLowerCase() === part.toLowerCase())
+        ? React.createElement('strong', { key: index, className: "text-emerald-400 font-bold" }, part)
+        : part
+    );
+  };
+
+  return (
+    React.createElement('div', { className: "max-w-2xl mx-auto" },
+      React.createElement('button', {
+        onClick: onBack,
+        className: "inline-flex items-center gap-2 mb-6 px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
+      },
+        React.createElement(BackArrowIcon, { className: "h-4 w-4" }),
+        "Back to Word List"
+      ),
+      React.createElement('div', { className: "bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-6 md:p-8" },
+        React.createElement('h2', { className: "text-3xl font-bold text-sky-400 mb-2" }, "AI Generated Story"),
+        React.createElement('p', { className: "text-slate-400 mb-6" }, `Using the words: ${words.map(w => w.word).join(', ')}`),
+        isLoading && React.createElement('div', { className: "text-center p-8" },
+            React.createElement(LoadingSpinner, null),
+            React.createElement('p', { className: "mt-4 text-slate-300" }, "The AI is writing your story...")
+        ),
+        error && React.createElement('p', { className: "text-red-400 text-center mt-4" }, error),
+        !isLoading && story && (
+            React.createElement('div', { className: "bg-slate-900/50 p-6 rounded-lg text-slate-200 leading-relaxed whitespace-pre-wrap" },
+                React.createElement('p', null, highlightWords(story))
+            )
+        )
+      )
+    )
+  );
+};
+// === END: components/StoryView.tsx ===
+
+// === START: components/FlashcardView.tsx ===
+const FlashcardView = ({ word, onBack, onToggleStar, isAiEnabled }) => {
+  const [newSentence, setNewSentence] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [isFlipped, setIsFlipped] = useState(false);
+
+  const handleGenerateSentence = useCallback(async () => {
+    setIsLoading(true);
+    setError('');
+    setNewSentence('');
+    try {
+      const sentence = await geminiService.generateNewSentence(word);
+      setNewSentence(sentence);
+    } catch (err) {
+      setError('Failed to generate a new sentence. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [word]);
+  
+  const DetailItem = ({ label, value }) => (
+    value ? (
+      React.createElement('div', { className: "py-3" },
+        React.createElement('p', { className: "text-sm font-semibold text-sky-400" }, label),
+        React.createElement('p', { className: "text-slate-300" }, value)
+      )
+    ) : null
+  );
+
+  return (
+    React.createElement('div', { className: "max-w-2xl mx-auto" },
+      React.createElement('button', {
+        onClick: onBack,
+        className: "inline-flex items-center gap-2 mb-6 px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500"
+      },
+        React.createElement(BackArrowIcon, { className: "h-4 w-4" }),
+        "Back to Word List"
+      ),
+      React.createElement('div', { className: `flip-card ${isFlipped ? 'flipped' : ''}`, onClick: () => setIsFlipped(!isFlipped) },
+        React.createElement('div', { className: "flip-card-inner cursor-pointer", style: {minHeight: '350px'} },
+            React.createElement('div', { className: "flip-card-front bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-6 md:p-8 flex flex-col justify-center items-center" },
+                 React.createElement('h2', { className: "text-5xl font-bold text-white text-center" }, word.word),
+                 React.createElement('p', { className: "text-slate-400 mt-4" }, "(Click to see details)")
+            ),
+            React.createElement('div', { className: "flip-card-back bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-6 md:p-8", onClick: e => e.stopPropagation() },
+                React.createElement('div', { className: "flex justify-between items-start mb-6" },
+                    React.createElement('div', null,
+                        React.createElement('h2', { className: "text-4xl font-bold text-white" }, word.word),
+                        React.createElement('p', { className: "text-lg text-slate-400 italic" }, `[${word.partOfSpeech}] - ${word.chineseMeaning}`)
+                    ),
+                     React.createElement('button', { onClick: () => onToggleStar(word.word), className: "p-2 rounded-full hover:bg-slate-700 transition-colors", "aria-label": "Star this word" },
+                        React.createElement(StarIcon, { className: `h-6 w-6 ${word.isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-slate-500'}` })
+                    )
+                ),
+                React.createElement('div', { className: "divide-y divide-slate-700" },
+                    React.createElement(DetailItem, { label: "Synonyms", value: word.synonym }),
+                    React.createElement(DetailItem, { label: "Sample Sentence", value: word.sampleSentence }),
+                    React.createElement(DetailItem, { label: "Remark", value: word.remark })
+                )
+            )
+        )
+      ),
+      React.createElement('div', { className: "mt-8 pt-6 border-t border-slate-700" },
+         React.createElement('button', {
+            onClick: handleGenerateSentence,
+            disabled: isLoading || !isAiEnabled,
+            title: !isAiEnabled ? "Please set your Gemini API Key to enable this feature." : "",
+            className: "w-full flex items-center justify-center gap-2 px-6 py-3 text-base font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all transform hover:scale-105 disabled:bg-slate-600 disabled:cursor-not-allowed disabled:transform-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+          },
+            isLoading ? (
+              React.createElement(React.Fragment, null, 
+                React.createElement(LoadingSpinner, null), " Generating..."
+              )
+            ) : (
+              React.createElement(React.Fragment, null,
+                React.createElement(SparklesIcon, { className: "h-5 w-5" }),
+                "Generate New Sentence with AI"
+              )
+            )
+          ),
+          error && React.createElement('p', { className: "text-red-400 text-center mt-4" }, error),
+          newSentence && (
+            React.createElement('div', { className: "mt-4 p-4 bg-slate-700/50 border border-slate-600 rounded-lg" },
+              React.createElement('p', { className: "text-sm font-semibold text-emerald-400 mb-1" }, "AI Generated Sentence:"),
+              React.createElement('p', { className: "text-slate-200" }, `"${newSentence}"`)
+            )
+          )
+      )
+    )
+  );
+};
+// === END: components/FlashcardView.tsx ===
+
+// === START: components/QuizView.tsx ===
+const generateQuizQuestions = (words, count, mode, allWords) => {
+    const questions = [];
+    
+    let eligibleWords = [...words];
+    if (mode === QuizMode.FillInTheBlank) {
+        eligibleWords = words.filter(w => 
+            w.sampleSentence && new RegExp(`\\b${w.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i').test(w.sampleSentence)
+        );
+    }
+
+    const shuffledWords = eligibleWords.sort(() => 0.5 - Math.random());
+    const questionCount = count === words.length ? shuffledWords.length : Math.min(count, shuffledWords.length);
+    
+    for (let i = 0; i < questionCount; i++) {
+        const correctWord = shuffledWords[i];
+        let options = [];
+        let correctAnswer = '';
+        let questionText = '';
+
+        switch (mode) {
+            case QuizMode.WordToMeaning:
+                correctAnswer = correctWord.chineseMeaning;
+                questionText = correctWord.word;
+                options.push(correctAnswer);
+                while (options.length < 4 && options.length < allWords.length) {
+                    const randomWord = allWords[Math.floor(Math.random() * allWords.length)];
+                    if (randomWord.word !== correctWord.word && !options.includes(randomWord.chineseMeaning)) {
+                        options.push(randomWord.chineseMeaning);
+                    }
+                }
+                break;
+            case QuizMode.MeaningToWord:
+                correctAnswer = correctWord.word;
+                questionText = correctWord.chineseMeaning;
+                options.push(correctAnswer);
+                while (options.length < 4 && options.length < allWords.length) {
+                    const randomWord = allWords[Math.floor(Math.random() * allWords.length)];
+                    if (randomWord.word !== correctWord.word && !options.includes(randomWord.word)) {
+                        options.push(randomWord.word);
+                    }
+                }
+                break;
+            case QuizMode.FillInTheBlank:
+                correctAnswer = correctWord.word;
+                questionText = correctWord.sampleSentence.replace(new RegExp(`\\b${correctWord.word.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'gi'), '______');
+                break;
+        }
+        
+        questions.push({
+            word: correctWord,
+            options: options.sort(() => 0.5 - Math.random()),
+            correctAnswer,
+            question: questionText,
+            mode
+        });
+    }
+    return questions;
+};
+
+const QuizView = ({ words, onBack, selectedWordsForQuiz, onSaveQuizResult }) => {
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [quizMode, setQuizMode] = useState(QuizMode.WordToMeaning);
+  const [numQuestions, setNumQuestions] = useState(10);
+  const [textInput, setTextInput] = useState('');
+  const [incorrectAnswers, setIncorrectAnswers] = useState([]);
+  const [resultSaved, setResultSaved] = useState(false);
+
+  const textInputRef = useRef(null);
+
+  const quizFinished = currentQuestionIndex >= questions.length;
+
+  useEffect(() => {
+    if (quizFinished && questions.length > 0 && !resultSaved) {
+        onSaveQuizResult({
+            date: new Date().toISOString(),
+            score: score,
+            totalQuestions: questions.length,
+            mode: questions[0].mode,
+            incorrectWords: incorrectAnswers.map(q => ({ 
+                word: q.word.word, 
+                chineseMeaning: q.word.chineseMeaning, 
+                sampleSentence: q.word.sampleSentence 
+            })),
+        });
+        setResultSaved(true);
+    }
+  }, [quizFinished, resultSaved, score, questions, incorrectAnswers, onSaveQuizResult]);
+
+  useEffect(() => {
+    if (quizStarted && !quizFinished && questions[currentQuestionIndex]?.mode === QuizMode.FillInTheBlank && textInputRef.current) {
+      textInputRef.current.focus();
+    }
+  }, [currentQuestionIndex, quizStarted, questions, quizFinished]);
+
+  const startQuiz = () => {
+    initAudioContext();
+    const questionCount = numQuestions === words.length ? words.length : numQuestions;
+    const generatedQuestions = generateQuizQuestions(words, questionCount, quizMode, words);
+
+    if (generatedQuestions.length === 0) {
+      alert(`Could not generate a '${quizMode.replace(/([A-Z])/g, ' $1').trim()}' quiz. This might be because no words have suitable sample sentences for this mode. Please try another mode or generate more words.`);
+      return;
+    }
+    
+    setQuestions(generatedQuestions);
+    setCurrentQuestionIndex(0);
+    setScore(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setTextInput('');
+    setIncorrectAnswers([]);
+    setResultSaved(false);
+    setQuizStarted(true);
+  };
+  
+  const startSpecificQuiz = useCallback((quizWords) => {
+    initAudioContext();
+    const generatedQuestions = generateQuizQuestions(quizWords, quizWords.length, QuizMode.FillInTheBlank, words);
+    if (generatedQuestions.length === 0) {
+        alert(`Could not generate a 'Fill in the Blank' quiz for the selected words. This might be because none of them have suitable sample sentences.`);
+        onBack();
+        return;
+    }
+    setQuestions(generatedQuestions);
+    setCurrentQuestionIndex(0);
+    setScore(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setTextInput('');
+    setIncorrectAnswers([]);
+    setResultSaved(false);
+    setQuizStarted(true);
+  }, [words, onBack]);
+
+  useEffect(() => {
+    if (selectedWordsForQuiz && selectedWordsForQuiz.length > 0) {
+      startSpecificQuiz(selectedWordsForQuiz);
+    }
+  }, [selectedWordsForQuiz, startSpecificQuiz]);
+
+  const handleAnswer = (answer) => {
+    if (isAnswered) return;
+    const currentQuestion = questions[currentQuestionIndex];
+    setSelectedAnswer(answer);
+    setIsAnswered(true);
+
+    if (answer.trim().toLowerCase() === currentQuestion.correctAnswer.toLowerCase()) {
+      setScore(s => s + 1);
+      playSound('correct');
+    } else {
+      setIncorrectAnswers(prev => [...prev, currentQuestion]);
+      playSound('incorrect');
+    }
+  };
+
+  const handleTextSubmit = (e) => {
+    e.preventDefault();
+    if (isAnswered || textInput.trim() === '') return;
+    handleAnswer(textInput);
+  };
+
+  const nextQuestion = () => {
+    playSound('click');
+    setIsAnswered(false);
+    setSelectedAnswer(null);
+    setTextInput('');
+    setCurrentQuestionIndex(i => i + 1);
+  };
+
+  const resetQuiz = useCallback(() => {
+    if (selectedWordsForQuiz && selectedWordsForQuiz.length > 0) {
+      startSpecificQuiz(selectedWordsForQuiz);
+    } else {
+      setQuizStarted(false);
+      setQuestions([]);
+    }
+  }, [selectedWordsForQuiz, startSpecificQuiz]);
+
+  const getButtonClass = (option) => {
+    if (!isAnswered) {
+      return "bg-slate-700 hover:bg-slate-600";
+    }
+    const currentQuestion = questions[currentQuestionIndex];
+    if (option === currentQuestion.correctAnswer) {
+      return "bg-emerald-600 text-white ring-2 ring-emerald-400";
+    }
+    if (selectedAnswer === option) {
+      return "bg-red-600 text-white ring-2 ring-red-500";
+    }
+    return "bg-slate-700 opacity-60";
+  };
+  
+  const ModeButton = ({mode, label}) => (
+      React.createElement('button', { 
+        onClick: () => setQuizMode(mode),
+        className: `px-4 py-2 text-sm font-medium rounded-md transition-colors w-full ${quizMode === mode ? 'bg-sky-500 text-white' : 'bg-slate-700 hover:bg-slate-600'}`
+      }, label)
+  );
+
+  if (!quizStarted) {
+    if (selectedWordsForQuiz && selectedWordsForQuiz.length > 0) {
+      return React.createElement('div', { className: "text-center p-8 text-slate-400" }, "Preparing your custom quiz...");
+    }
+
+    return (
+      React.createElement('div', { className: "max-w-xl mx-auto bg-slate-800 p-8 rounded-lg shadow-xl" },
+        React.createElement('h2', { className: "text-3xl font-bold text-center mb-6 text-sky-400" }, "Quiz Setup"),
+        React.createElement('div', { className: "mb-6" },
+          React.createElement('label', { className: "block text-slate-300 mb-2 font-semibold" }, "Quiz Mode"),
+          React.createElement('div', { className: "grid grid-cols-1 sm:grid-cols-3 gap-2 p-1 bg-slate-900/50 rounded-lg" },
+            React.createElement(ModeButton, { mode: QuizMode.WordToMeaning, label: "Word → Meaning" }),
+            React.createElement(ModeButton, { mode: QuizMode.MeaningToWord, label: "Meaning → Word" }),
+            React.createElement(ModeButton, { mode: QuizMode.FillInTheBlank, label: "Fill in the Blank" })
+          )
+        ),
+        React.createElement('div', { className: "mb-8" },
+          React.createElement('label', { className: "block text-slate-300 mb-2 font-semibold" }, "Number of Questions"),
+          React.createElement('div', { className: "grid grid-cols-3 gap-2 p-1 bg-slate-900/50 rounded-lg" },
+            [10, 20, words.length].map(num => (
+              React.createElement('button', { 
+                key: num, 
+                onClick: () => setNumQuestions(num),
+                className: `px-4 py-2 text-sm font-medium rounded-md transition-colors ${numQuestions === num ? 'bg-sky-500 text-white' : 'bg-slate-700 hover:bg-slate-600'}`
+              }, num === words.length ? `All (${words.length})` : num)
+            ))
+          )
+        ),
+        React.createElement('button', { onClick: startQuiz, className: "w-full bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-lg" }, "Start Quiz"),
+        React.createElement('button', { onClick: onBack, className: "mt-4 w-full text-slate-300 font-bold py-2 px-4 rounded-lg hover:bg-slate-700 transition-colors" }, "Back to List")
+      )
+    );
+  }
+
+  if (quizFinished) {
+    const accuracy = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+    return (
+      React.createElement('div', { className: "max-w-2xl mx-auto text-center bg-slate-800 p-6 md:p-8 rounded-lg" },
+        React.createElement('h2', { className: "text-3xl font-bold mb-4 text-emerald-400" }, "Quiz Complete!"),
+        React.createElement('div', { className: "my-6 grid grid-cols-1 sm:grid-cols-3 gap-4 text-white" },
+            React.createElement('div', { className: "bg-slate-700/50 p-4 rounded-lg" },
+                React.createElement('p', { className: "text-sm text-slate-400" }, "Score"),
+                React.createElement('p', { className: "text-3xl font-bold" }, `${score}/${questions.length}`)
+            ),
+            React.createElement('div', { className: "bg-slate-700/50 p-4 rounded-lg" },
+                React.createElement('p', { className: "text-sm text-slate-400" }, "Accuracy"),
+                React.createElement('p', { className: "text-3xl font-bold" }, `${accuracy}%`)
+            ),
+            React.createElement('div', { className: "bg-slate-700/50 p-4 rounded-lg" },
+                React.createElement('p', { className: "text-sm text-slate-400" }, "Mistakes"),
+                React.createElement('p', { className: "text-3xl font-bold" }, incorrectAnswers.length)
+            )
+        ),
+        incorrectAnswers.length > 0 && (
+          React.createElement('div', { className: "mb-6 text-left bg-slate-900/50 p-4 rounded-lg max-h-60 overflow-y-auto" },
+            React.createElement('h3', { className: "text-lg font-semibold text-sky-400 mb-2" }, "Review Your Mistakes"),
+            React.createElement('ul', { className: "divide-y divide-slate-700" },
+              incorrectAnswers.map((q, index) => (
+                React.createElement('li', { key: index, className: "py-3" },
+                  React.createElement('p', { className: "font-bold text-slate-200" }, q.word.word, React.createElement('span', { className: "text-sm text-slate-400 font-normal" }, ` - ${q.word.chineseMeaning}`)),
+                  React.createElement('p', { className: "text-sm text-emerald-400 mt-1" }, "Correct Answer: ", React.createElement('span', { className: "font-semibold" }, q.correctAnswer))
+                )
+              ))
+            )
+          )
+        ),
+        React.createElement('div', { className: "flex flex-col sm:flex-row justify-center gap-4" },
+            React.createElement('button', { onClick: resetQuiz, className: "flex items-center justify-center gap-2 bg-sky-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-sky-600 transition-colors" },
+                React.createElement(RotateCw, { className: "h-5 w-5" }),
+                "Try Again"
+            ),
+            React.createElement('button', { onClick: onBack, className: "flex items-center justify-center gap-2 bg-slate-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-slate-500 transition-colors" },
+                React.createElement(Home, { className: "h-5 w-5" }),
+                "Back to List"
+            )
+        )
+      )
+    );
+  }
+
+  const currentQuestion = questions[currentQuestionIndex];
+
+  return (
+    React.createElement('div', { className: "max-w-3xl mx-auto" },
+      React.createElement('div', { className: "bg-slate-800 p-6 md:p-8 rounded-lg shadow-lg" },
+        React.createElement('div', { className: "flex justify-between items-center mb-4 text-slate-400" },
+          React.createElement('p', null, `Question ${currentQuestionIndex + 1} of ${questions.length}`),
+          React.createElement('p', null, `Score: ${score}`)
+        ),
+        React.createElement('div', { className: "w-full bg-slate-700 rounded-full h-2.5 mb-6" },
+            React.createElement('div', { className: "bg-sky-500 h-2.5 rounded-full transition-all duration-300", style: { width: `${((currentQuestionIndex) / questions.length) * 100}%` } })
+        ),
+        React.createElement('div', { className: "bg-slate-900/50 p-6 rounded-lg mb-8 min-h-[120px] flex items-center justify-center" },
+            React.createElement('h3', { className: "text-3xl md:text-4xl font-bold text-center text-sky-300" }, currentQuestion.question)
+        ),
+
+        currentQuestion.mode !== QuizMode.FillInTheBlank ? (
+            React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-4" },
+            currentQuestion.options.map((option, index) => (
+                React.createElement('button', {
+                key: index,
+                onClick: () => handleAnswer(option),
+                disabled: isAnswered,
+                className: `w-full p-5 rounded-lg text-left transition-all duration-200 text-white text-lg font-semibold ${getButtonClass(option)} ${!isAnswered ? 'transform hover:scale-105' : 'cursor-default'}`
+                }, option)
+            )))
+        ) : (
+            React.createElement('form', { onSubmit: handleTextSubmit },
+                React.createElement('input', {
+                    ref: textInputRef,
+                    type: "text",
+                    value: textInput,
+                    onChange: (e) => setTextInput(e.target.value),
+                    disabled: isAnswered,
+                    placeholder: "Type your answer...",
+                    className: "w-full text-lg p-4 bg-slate-700 border-2 border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                }),
+                !isAnswered && (
+                    React.createElement('button', { type: "submit", className: "mt-4 w-full bg-sky-500 text-white font-bold py-3 rounded-lg hover:bg-sky-600 transition-colors" }, "Submit")
+                )
+            )
+        ),
+        
+        isAnswered && (
+          React.createElement('div', { className: "mt-6 text-center animate-fade-in" },
+            selectedAnswer?.trim().toLowerCase() === currentQuestion.correctAnswer.toLowerCase() ? (
+              React.createElement('div', { className: "flex items-center justify-center gap-2 text-xl font-bold text-emerald-400" },
+                React.createElement(CheckCircle2, { className: "h-6 w-6" }), " Correct!"
+              )
+            ) : (
+              React.createElement('div', null,
+                React.createElement('div', { className: "flex items-center justify-center gap-2 text-xl font-bold text-red-400" },
+                    React.createElement(XCircle, { className: "h-6 w-6" }), " Incorrect"
+                ),
+                React.createElement('p', { className: "text-slate-300 mt-2" }, "The correct answer is: ", React.createElement('strong', { className: "text-emerald-400" }, currentQuestion.correctAnswer))
+              )
+            ),
+            React.createElement('button', { onClick: nextQuestion, className: "mt-4 bg-slate-600 text-white font-bold py-3 px-12 rounded-lg hover:bg-slate-500 transition-colors" }, "Next →")
+          )
+        )
+      )
+    )
+  );
+};
+// === END: components/QuizView.tsx ===
+
+// === START: components/MatchingGameView.tsx ===
+const difficultySettings = {
+  easy: { pairs: 4, grid: 'grid-cols-4', baseScore: 4000 },
+  medium: { pairs: 8, grid: 'grid-cols-4 md:grid-cols-4 lg:grid-cols-8', baseScore: 10000 },
+  hard: { pairs: 12, grid: 'grid-cols-4 md:grid-cols-6 lg:grid-cols-8', baseScore: 20000 },
+};
+
+const MatchingGameView = ({ words, onBack, highScores, onUpdateHighScore }) => {
+  const [gameState, setGameState] = useState('setup');
+  const [difficulty, setDifficulty] = useState('medium');
+  const [cards, setCards] = useState([]);
+  const [flippedCards, setFlippedCards] = useState([]);
+  const [moves, setMoves] = useState(0);
+  const [timer, setTimer] = useState(0);
+  const [score, setScore] = useState(0);
+  const [isMutedState, setIsMutedState] = useState(isMuted());
+  const [gameWordsList, setGameWordsList] = useState([]);
+  const [showWordBank, setShowWordBank] = useState(false);
+
+  useEffect(() => {
+    let interval = null;
+    if (gameState === 'playing') {
+      interval = setInterval(() => {
+        setTimer(prevTime => prevTime + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [gameState]);
+
+  useEffect(() => {
+    if (flippedCards.length === 2) {
+      const [firstCard, secondCard] = flippedCards;
+      if (firstCard.wordIdentifier === secondCard.wordIdentifier) {
+        setTimeout(() => {
+          setCards(prevCards =>
+            prevCards.map(card =>
+              card.wordIdentifier === firstCard.wordIdentifier
+                ? { ...card, isMatched: true }
+                : card
+            )
+          );
+          setFlippedCards([]);
+          playSound('correct');
+        }, 500);
+      } else {
+        setTimeout(() => {
+          playSound('incorrect');
+          setCards(prevCards =>
+            prevCards.map(card =>
+              !card.isMatched ? { ...card, isFlipped: false } : card
+            )
+          );
+          setFlippedCards([]);
+        }, 1200);
+      }
+    }
+  }, [flippedCards]);
+
+  useEffect(() => {
+    if (cards.length > 0 && cards.every(card => card.isMatched)) {
+      setGameState('won');
+      playSound('win');
+      const settings = difficultySettings[difficulty];
+      const finalScore = Math.max(0, settings.baseScore - (timer * 10) - (moves * 5));
+      setScore(finalScore);
+      onUpdateHighScore(difficulty, finalScore);
+    }
+  }, [cards, difficulty, moves, onUpdateHighScore, timer]);
+
+  const setupGame = useCallback((selectedDifficulty) => {
+    const settings = difficultySettings[selectedDifficulty];
+    const shuffled = [...words].sort(() => 0.5 - Math.random());
+    const gameWords = shuffled.slice(0, settings.pairs);
+    setGameWordsList(gameWords);
+
+    const newCards = [];
+    gameWords.forEach((word) => {
+      newCards.push({ id: `${word.word}-w`, type: 'word', content: word.word, wordIdentifier: word.word, isFlipped: false, isMatched: false });
+      newCards.push({ id: `${word.word}-m`, type: 'meaning', content: word.chineseMeaning, wordIdentifier: word.word, isFlipped: false, isMatched: false });
+    });
+    
+    setCards(newCards.sort(() => 0.5 - Math.random()));
+    setFlippedCards([]);
+    setMoves(0);
+    setTimer(0);
+    setScore(0);
+    setShowWordBank(false);
+    setGameState('playing');
+  }, [words]);
+
+  const handleCardClick = (clickedCard) => {
+    if (clickedCard.isFlipped || flippedCards.length === 2) return;
+
+    playSound('click');
+    const newFlippedCard = { ...clickedCard, isFlipped: true };
+    setCards(prevCards =>
+      prevCards.map(card => (card.id === clickedCard.id ? newFlippedCard : card))
+    );
+
+    if (flippedCards.length === 0) {
+        setFlippedCards([newFlippedCard]);
+    } else {
+        setFlippedCards([...flippedCards, newFlippedCard]);
+        setMoves(m => m + 1);
+    }
+  };
+
+  const handleToggleMute = () => {
+    toggleMute();
+    setIsMutedState(isMuted());
+  };
+
+  const handlePlayAgain = () => {
+    setGameState('setup');
+    setCards([]);
+  }
+
+  const handleStartGame = (selectedDifficulty) => {
+    initAudioContext();
+    setupGame(selectedDifficulty);
+  };
+
+  const CardComponent = ({ card }) => (
+    React.createElement('div', { 
+      className: `flip-card ${card.isFlipped ? 'flipped' : ''}`, 
+      style: { height: '100px' },
+      onClick: () => handleCardClick(card)
+    },
+      React.createElement('div', { className: `flip-card-inner rounded-lg shadow-md transition-all duration-300 ${card.isMatched ? 'opacity-50' : ''}` },
+        React.createElement('div', { className: "flip-card-front bg-slate-700 flex items-center justify-center cursor-pointer hover:bg-slate-600 transition-colors" }),
+        React.createElement('div', { className: `flip-card-back flex items-center justify-center text-center p-2 text-white ${card.isMatched ? 'bg-emerald-600' : 'bg-sky-600'}` },
+          React.createElement('span', { className: "text-sm md:text-base" }, card.content)
+        )
+      )
+    )
+  );
+
+  const renderSetupScreen = () => (
+    React.createElement('div', { className: "max-w-md mx-auto text-center bg-slate-800 p-8 rounded-lg" },
+      React.createElement('h2', { className: "text-3xl font-bold mb-6 text-sky-400" }, "Matching Game"),
+      React.createElement('p', { className: "text-slate-300 mb-6" }, "Select a difficulty to start. Match the words with their meanings as fast as you can!"),
+      React.createElement('div', { className: "mb-6" },
+        React.createElement('label', { className: "block text-slate-300 mb-2" }, "Difficulty:"),
+        React.createElement('div', { className: "flex justify-center gap-2" },
+          ['easy', 'medium', 'hard'].map(d => (
+            React.createElement('button', { key: d, onClick: () => setDifficulty(d), className: `px-4 py-2 rounded-md transition-colors ${difficulty === d ? 'bg-sky-500 text-white' : 'bg-slate-700 hover:bg-slate-600'}` },
+              d.charAt(0).toUpperCase() + d.slice(1)
+            )
+          ))
+        )
+      ),
+      React.createElement('div', { className: "mb-6 text-slate-400" }, "High Score: ", React.createElement('span', { className: "font-bold text-yellow-400" }, highScores[difficulty])),
+      React.createElement('button', { onClick: () => handleStartGame(difficulty), className: "w-full bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-emerald-600 transition-colors" }, "Start Game"),
+      React.createElement('button', { onClick: onBack, className: "mt-4 w-full bg-slate-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors" }, "Back to List")
+    )
+  );
+  
+  const renderWinScreen = () => (
+     React.createElement('div', { className: "text-center bg-slate-800 p-8 rounded-lg max-w-lg mx-auto" },
+        React.createElement('h2', { className: "text-3xl font-bold mb-4 text-emerald-400" }, "Congratulations!"),
+        React.createElement('p', { className: "text-xl text-slate-300 mb-6" }, "You've matched all the words!"),
+        React.createElement('div', { className: "grid grid-cols-2 gap-4 text-left bg-slate-900/50 p-4 rounded-lg mb-6" },
+            React.createElement('div', null, React.createElement('p', { className: "text-slate-400" }, "Time:"), React.createElement('p', { className: "text-2xl font-semibold text-white" }, `${timer}s`)),
+            React.createElement('div', null, React.createElement('p', { className: "text-slate-400" }, "Moves:"), React.createElement('p', { className: "text-2xl font-semibold text-white" }, moves)),
+            React.createElement('div', null, React.createElement('p', { className: "text-slate-400" }, "Score:"), React.createElement('p', { className: "text-2xl font-semibold text-white" }, score)),
+            React.createElement('div', null, React.createElement('p', { className: "text-slate-400" }, "High Score:"), React.createElement('p', { className: "text-2xl font-semibold text-yellow-400 flex items-center gap-2" }, highScores[difficulty], ' ', score === highScores[difficulty] && score > 0 && React.createElement('span', { className: "text-xs bg-yellow-400 text-slate-900 px-2 py-0.5 rounded-full font-bold" }, "NEW!")))
+        ),
+        React.createElement('button', { onClick: handlePlayAgain, className: "w-full sm:w-auto bg-sky-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-sky-600 transition-colors" }, "Play Again"),
+        React.createElement('button', { onClick: onBack, className: "mt-4 sm:mt-0 sm:ml-4 w-full sm:w-auto bg-slate-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-500 transition-colors" }, "Back to List")
+      )
+  );
+  
+  const renderGame = () => {
+    const settings = difficultySettings[difficulty];
+    return (
+    React.createElement(React.Fragment, null,
+      React.createElement('div', { className: "bg-slate-800/80 backdrop-blur-sm rounded-lg p-4 mb-6 flex justify-between items-center sticky top-20 z-5" },
+        React.createElement('div', { className: "flex gap-6 text-lg" },
+          React.createElement('p', null, "Time: ", React.createElement('span', { className: "font-bold text-sky-400" }, `${timer}s`)),
+          React.createElement('p', null, "Moves: ", React.createElement('span', { className: "font-bold text-sky-400" }, moves))
+        ),
+        React.createElement('div', { className: "flex items-center gap-2 md:gap-4" },
+            React.createElement('p', { className: "text-sm text-slate-400 hidden sm:block" }, "High Score: ", React.createElement('span', { className: "font-bold text-yellow-400" }, highScores[difficulty])),
+            React.createElement('button', { onClick: () => setShowWordBank(!showWordBank), className: "p-2 text-slate-400 hover:text-white", "aria-label": "Toggle word bank" },
+              React.createElement(BookOpenIcon, { className: `h-6 w-6 transition-colors ${showWordBank ? 'text-sky-400' : ''}` })
+            ),
+            React.createElement('button', { onClick: handleToggleMute, className: "p-2 text-slate-400 hover:text-white", "aria-label": "Toggle sound" },
+                isMutedState ? React.createElement(VolumeXIcon, { className: "h-6 w-6" }) : React.createElement(Volume2Icon, { className: "h-6 w-6" })
+            )
+        )
+      ),
+      React.createElement('div', { className: `grid ${settings.grid} gap-2 md:gap-4` },
+        cards.map((card) => React.createElement(CardComponent, { key: card.id, card: card }))
+      ),
+      showWordBank && (
+        React.createElement('div', { className: "mt-8 bg-slate-800/50 border border-slate-700 rounded-lg p-4 animate-fade-in" },
+            React.createElement('h3', { className: "text-lg font-bold text-sky-400 mb-4" }, "Word Bank"),
+            React.createElement('ul', { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-slate-300" },
+                gameWordsList.map(word => (
+                    React.createElement('li', { key: word.word },
+                        React.createElement('span', { className: "font-semibold text-white" }, `${word.word}:`), ` ${word.chineseMeaning}`
+                    )
+                ))
+            )
+        )
+      )
+    )
+    );
+  };
+
+  return (
+    React.createElement('div', { className: "max-w-6xl mx-auto" },
+      React.createElement('button', {
+        onClick: gameState === 'playing' ? onBack : handlePlayAgain,
+        className: `inline-flex items-center gap-2 mb-6 px-4 py-2 text-sm font-medium rounded-md hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 ${gameState === 'setup' ? 'hidden' : ''}`
+      },
+        React.createElement(BackArrowIcon, { className: "h-4 w-4" }),
+        gameState === 'playing' ? 'Quit Game' : 'Back to Setup'
+      ),
+      gameState === 'setup' && renderSetupScreen(),
+      gameState === 'playing' && renderGame(),
+      gameState === 'won' && renderWinScreen()
+    )
+  );
+};
+// === END: components/MatchingGameView.tsx ===
+
+// === START: components/VocabularyList.tsx ===
+const VocabularyList = ({ words, dailyWords, onSelectWord, onStartStory, onStartFillInTheBlankQuiz, onToggleStar, onGenerateWords, isGeneratingWords, isAiEnabled }) => {
+  const [selectedWords, setSelectedWords] = useState(new Set());
+  const [showStarred, setShowStarred] = useState(false);
+
+  const toggleWordSelection = (word) => {
+    const newSelectedWords = new Set(selectedWords);
+    if (newSelectedWords.has(word.word)) {
+      newSelectedWords.delete(word.word);
+    } else {
+      newSelectedWords.add(word.word);
+    }
+    setSelectedWords(newSelectedWords);
+  };
+
+  const handleCreateStory = () => {
+    const wordsForStory = words.filter(w => selectedWords.has(w.word));
+    onStartStory(wordsForStory);
+  };
+  
+  const handleCreateQuiz = () => {
+    const wordsForQuiz = words.filter(w => selectedWords.has(w.word));
+    onStartFillInTheBlankQuiz(wordsForQuiz);
+  };
+  
+  const filteredWords = useMemo(() => {
+    const otherWords = words.filter(w => !dailyWords.some(dw => dw.word === w.word));
+    if (showStarred) {
+      return otherWords.filter(word => word.isStarred);
+    }
+    return otherWords;
+  }, [words, dailyWords, showStarred]);
+  
+  const WordCard = ({ word }) => (
+    React.createElement('div', { key: word.word, className: "relative group" },
+      React.createElement('div', {
+        onClick: () => onSelectWord(word),
+        className: "h-full bg-slate-800 border border-slate-700 rounded-lg p-4 cursor-pointer transition-all duration-300 hover:border-sky-500 hover:bg-slate-700/50 transform hover:-translate-y-1"
+      },
+        React.createElement('h3', { className: "font-bold text-lg text-sky-400 pr-12" }, word.word),
+        React.createElement('p', { className: "text-slate-400" }, word.chineseMeaning)
+      ),
+      React.createElement('div', { className: "absolute top-3 right-3 flex flex-col gap-2" },
+        React.createElement('button', { onClick: () => onToggleStar(word.word), className: "p-1 rounded-full text-slate-500 hover:text-yellow-400 transition-colors", "aria-label": `Star ${word.word}` },
+          React.createElement(StarIcon, { className: `h-5 w-5 ${word.isStarred ? 'fill-yellow-400 text-yellow-400' : ''}` })
+        ),
+        React.createElement('input', {
+          type: "checkbox",
+          checked: selectedWords.has(word.word),
+          onChange: () => toggleWordSelection(word),
+          className: "h-5 w-5 rounded bg-slate-700 border-slate-500 text-emerald-500 focus:ring-emerald-500 cursor-pointer",
+          "aria-label": `Select ${word.word}`
+        })
+      )
+    )
+  );
+
+  const aiActionTooltip = !isAiEnabled ? "Please set your Gemini API Key to enable AI features." : "";
+
+  return (
+    React.createElement('div', null,
+       React.createElement('div', { className: "bg-slate-800 border border-slate-700 rounded-lg p-6 mb-8" },
+         React.createElement('div', { className: "flex justify-between items-center mb-4" },
+            React.createElement('h2', { className: "text-2xl font-bold text-sky-400 flex items-center gap-2" },
+              React.createElement(BookMarkedIcon, { className: "h-6 w-6" }),
+              "Daily Words"
+            )
+          ),
+          React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+            dailyWords.map((word) => React.createElement(WordCard, { key: word.word, word: word }))
+          )
+      ),
+      
+       React.createElement('div', { className: "bg-slate-800/50 border border-slate-700/50 rounded-lg p-6 mb-8 text-center" },
+        React.createElement('h2', { className: "text-xl font-bold text-emerald-400 mb-2" }, "AI Actions"),
+        React.createElement('p', { className: "text-slate-400 mb-4" }, "Select words from the list to use with AI!"),
+        React.createElement('div', { className: "flex flex-col sm:flex-row justify-center items-center gap-4" },
+          React.createElement('button', {
+            onClick: handleCreateStory,
+            title: aiActionTooltip,
+            disabled: !isAiEnabled || selectedWords.size < 2 || selectedWords.size > 5,
+            className: "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-base font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:bg-slate-600 disabled:transform-none disabled:cursor-not-allowed"
+          },
+            React.createElement(SparklesIcon, { className: "h-5 w-5" }),
+            `Create Story (${selectedWords.size}/2-5)`
+          ),
+          React.createElement('button', {
+            onClick: handleCreateQuiz,
+            title: aiActionTooltip,
+            disabled: !isAiEnabled || selectedWords.size < 1,
+            className: "w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-base font-semibold bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:bg-slate-600 disabled:transform-none disabled:cursor-not-allowed"
+          },
+            React.createElement(PencilIcon, { className: "h-5 w-5" }),
+            `'Fill in the Blank' Quiz (${selectedWords.size})`
+          )
+        )
+      ),
+
+      React.createElement('div', { className: "flex justify-between items-center mb-4" },
+          React.createElement('h2', { className: "text-2xl font-bold" }, "Full Word List"),
+          React.createElement('div', { className: "flex items-center gap-2 p-1 bg-slate-800 rounded-lg" },
+              React.createElement('button', { onClick: () => setShowStarred(false), className: `px-3 py-1 text-sm rounded-md ${!showStarred ? 'bg-sky-500 text-white' : 'hover:bg-slate-700'}` }, "All"),
+              React.createElement('button', { onClick: () => setShowStarred(true), className: `px-3 py-1 text-sm rounded-md flex items-center gap-1 ${showStarred ? 'bg-sky-500 text-white' : 'hover:bg-slate-700'}` },
+                React.createElement(StarIcon, { className: "h-4 w-4" }), " Starred"
+              )
+          )
+      ),
+      React.createElement('div', { className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" },
+        filteredWords.map((word) => React.createElement(WordCard, { key: word.word, word: word }))
+      ),
+      
+      React.createElement('div', { className: "text-center mt-12" },
+        React.createElement('button', {
+          onClick: onGenerateWords,
+          title: aiActionTooltip,
+          disabled: isGeneratingWords || !isAiEnabled,
+          className: "w-full md:w-auto flex items-center justify-center gap-2 px-8 py-4 text-base font-semibold bg-slate-700 text-sky-300 rounded-lg hover:bg-slate-600 transition-all disabled:bg-slate-600 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+        },
+          isGeneratingWords ? (
+            React.createElement(React.Fragment, null,
+              React.createElement(LoadingSpinner, null), " Generating New Words..."
+            )
+          ) : (
+            React.createElement(React.Fragment, null,
+              React.createElement(RefreshCwIcon, { className: "h-5 w-5" }),
+              "Generate More Words with AI"
+            )
+          )
+        )
+      )
+    )
+  );
+};
+// === END: components/VocabularyList.tsx ===
+
+// === START: App.tsx ===
+const APP_STORAGE_KEY = 'vocabMasterAI.data';
+const API_KEY_STORAGE_KEY = 'vocabMasterAI.apiKey';
+
+const getInitialState = () => {
+  try {
+    const storedData = localStorage.getItem(APP_STORAGE_KEY);
+    if (storedData) {
+      const parsedData = JSON.parse(storedData);
+      
+      const highScores = parsedData.highScores || { easy: 0, medium: 0, hard: 0 };
+      if (!('easy' in highScores)) highScores.easy = 0;
+      if (!('medium' in highScores)) highScores.medium = 0;
+      if (!('hard' in highScores)) highScores.hard = 0;
+      
+      const words = Array.isArray(parsedData.words) && parsedData.words.length > 0
+        ? parsedData.words.map((w) => ({ ...w, isStarred: !!w.isStarred }))
+        : vocabularyData.map(w => ({ ...w, isStarred: false }));
+
+      return {
+        ...parsedData,
+        words,
+        highScores,
+        quizHistory: parsedData.quizHistory || []
+      };
+    }
+  } catch (error) {
+    console.error("Failed to parse from localStorage", error);
+  }
+  return { 
+      words: vocabularyData.map(w => ({...w, isStarred: false})), 
+      dailyWords: [], 
+      lastDailyUpdate: null,
+      highScores: { easy: 0, medium: 0, hard: 0 },
+      quizHistory: []
+    };
+};
+
+function App() {
+  const [view, setView] = useState('list');
+  const [appData, setAppData] = useState(getInitialState);
+  const { words, dailyWords, lastDailyUpdate, highScores, quizHistory } = appData;
+
+  const [selectedWord, setSelectedWord] = useState(null);
+  const [wordsForStory, setWordsForStory] = useState([]);
+  const [wordsForQuiz, setWordsForQuiz] = useState([]);
+  const [isGeneratingWords, setIsGeneratingWords] = useState(false);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY) || '');
+  const [isAiEnabled, setIsAiEnabled] = useState(false);
+  
+  useEffect(() => {
+    try {
+      localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(appData));
+    } catch (error) {
+      console.error("Failed to save to localStorage", error);
+    }
+  }, [appData]);
+  
+  useEffect(() => {
+    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+    geminiService.initialize(apiKey);
+    setIsAiEnabled(geminiService.isInitialized);
+  }, [apiKey]);
+  
+  useEffect(() => {
+    const today = new Date().toDateString();
+    if (lastDailyUpdate !== today) {
+        const nonDailyWords = words.filter(w => !dailyWords.some(dw => dw.word === w.word));
+        const shuffled = [...nonDailyWords].sort(() => 0.5 - Math.random());
+        const newDailyWords = shuffled.slice(0, 3);
+        
+        if (newDailyWords.length > 0) {
+            setAppData(prev => ({...prev, dailyWords: newDailyWords, lastDailyUpdate: today}));
+        }
+    }
+  }, [words, dailyWords, lastDailyUpdate]);
+
+  const handleSelectWord = (word) => {
+    setSelectedWord(word);
+    setView('flashcard');
+  };
+
+  const handleStartQuiz = () => setView('quiz');
+  const handleStartMatchingGame = () => setView('matching');
+
+  const handleShowList = () => {
+    setView('list');
+    setSelectedWord(null);
+    setWordsForStory([]);
+    setWordsForQuiz([]);
+  };
+  
+  const handleStartStory = (words) => {
+    setWordsForStory(words);
+    setView('story');
+  };
+
+  const handleStartFillInTheBlankQuiz = (words) => {
+    setWordsForQuiz(words);
+    setView('quiz');
+  };
+  
+  const handleToggleStar = (wordToToggle) => {
+    setAppData(prev => ({
+        ...prev,
+        words: prev.words.map(w => w.word === wordToToggle ? { ...w, isStarred: !w.isStarred } : w),
+        dailyWords: prev.dailyWords.map(w => w.word === wordToToggle ? { ...w, isStarred: !w.isStarred } : w),
+    }));
+  };
+
+  const handleGenerateWords = async () => {
+    setIsGeneratingWords(true);
+    const existingWordStrings = words.map(w => w.word);
+    const newWords = await geminiService.generateNewWords(existingWordStrings, 12);
+    if (newWords.length > 0) {
+        const uniqueNewWords = newWords.filter(nw => !existingWordStrings.includes(nw.word));
+        setAppData(prev => ({ ...prev, words: [...prev.words, ...uniqueNewWords]}));
+    }
+    setIsGeneratingWords(false);
+  };
+  
+  const handleUpdateHighScore = (difficulty, newScore) => {
+    setAppData(prev => {
+        if (newScore > prev.highScores[difficulty]) {
+            const newHighScores = { ...prev.highScores, [difficulty]: newScore };
+            return { ...prev, highScores: newHighScores };
+        }
+        return prev;
+    });
+  };
+
+  const handleSaveQuizResult = (result) => {
+    setAppData(prev => ({
+        ...prev,
+        quizHistory: [...prev.quizHistory, result]
+    }));
+  };
+  
+  const shuffledWordsForQuiz = useMemo(() => [...words].sort(() => 0.5 - Math.random()), [words]);
+
+  const renderContent = () => {
+    switch (view) {
+      case 'flashcard':
+        return selectedWord && React.createElement(FlashcardView, { word: selectedWord, onBack: handleShowList, onToggleStar: handleToggleStar, isAiEnabled: isAiEnabled });
+      case 'quiz':
+        return React.createElement(QuizView, { 
+                  words: shuffledWordsForQuiz, 
+                  onBack: handleShowList, 
+                  selectedWordsForQuiz: wordsForQuiz,
+                  onSaveQuizResult: handleSaveQuizResult
+                });
+      case 'story':
+        return React.createElement(StoryView, { words: wordsForStory, onBack: handleShowList });
+      case 'matching':
+        return React.createElement(MatchingGameView, { 
+                  words: words, 
+                  onBack: handleShowList, 
+                  highScores: highScores,
+                  onUpdateHighScore: handleUpdateHighScore
+                });
+      case 'list':
+      default:
+        return React.createElement(VocabularyList, { 
+          words: words, 
+          dailyWords: dailyWords,
+          onSelectWord: handleSelectWord, 
+          onStartStory: handleStartStory, 
+          onStartFillInTheBlankQuiz: handleStartFillInTheBlankQuiz,
+          onToggleStar: handleToggleStar,
+          onGenerateWords: handleGenerateWords,
+          isGeneratingWords: isGeneratingWords,
+          isAiEnabled: isAiEnabled
+          });
+    }
+  };
+
+  return (
+    React.createElement('div', { className: "min-h-screen bg-slate-900 font-sans text-slate-200" },
+      React.createElement(Header, { onShowList: handleShowList, onStartQuiz: handleStartQuiz, onStartMatchingGame: handleStartMatchingGame }),
+      React.createElement('main', { className: "container mx-auto p-4 md:p-8" },
+        React.createElement(ApiKeyManager, { apiKey: apiKey, setApiKey: setApiKey }),
+        renderContent()
+      ),
+      React.createElement('footer', { className: "text-center p-4 text-slate-500 text-sm" },
+        React.createElement('p', null, "Built with React, Tailwind CSS, and the Gemini API.")
+      )
+    )
+  );
+}
+// === END: App.tsx ===
+
+// === START: index.tsx ===
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  React.createElement(React.StrictMode, null,
+    React.createElement(App, null)
+  )
+);
+// === END: index.tsx ===
+    </script>
+  </body>
+</html>
